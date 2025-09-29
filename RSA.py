@@ -18,7 +18,7 @@ def rsa_key_generation():
     phi_n = (p-1)*(q-1)
     e = 65537
     if math.gcd(e, phi_n) != 1:
-        print("fuck")
+        print("Check")
     d = pow(e, -1, phi_n)
     print("Phi(n):", phi_n)
     print("Public key:", e, n)
@@ -28,7 +28,7 @@ def rsa_key_generation():
 ###############################################
 # This part will be implemented in VHDL
 def blakley_mul(a, b, n):
-    r = 0
+    r = 0   
     for i in range(b.bit_length()-1, -1, -1):
         r = (r << 1) % n
         if (b >> i) & 1:
