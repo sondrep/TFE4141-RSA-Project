@@ -75,7 +75,7 @@ begin
             when IDLE =>
                 msgin_ready <= '1';                             -- sier ifra at vår enhet er klar til å motta signal
                 if msgin_valid = '1' then                       -- triggres når msgin_valid blir 1, dette bestemmes av rsa_msgin
-                    next_state <= LOAD;
+                    next_state <= LOAD;                         -- Kan teste å gå direkte til INIT, men det kan kan muligens skape glitches rundt msgin_valid? Fordi msgin_ready kan fremdeles være høy, og da kan dobbel-loading skje
                 end if;
 
             ------------------------------------------------
