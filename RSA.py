@@ -50,7 +50,6 @@ def modexp_RL_method(base, exponent, n):
 e, d, n = rsa_key_generation()
 
 C = modexp_RL_method(M, e, n)
-#print("blakley_counter:", blakley_counter)
 print("Original message:", M)
 print("Encrypted message:", C)
 M_decrypted = modexp_RL_method(C, d, n)
