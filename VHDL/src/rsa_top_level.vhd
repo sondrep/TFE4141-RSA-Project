@@ -32,13 +32,14 @@ entity rsa_top_level is
 end rsa_top_level;
 
 architecture rtl of rsa_top_level is
-
+    constant WIDTH : integer := 256;
     -------------------------------
     -- Interne kontrollsignaler
     -------------------------------
     signal blakley_start   : std_logic;
     signal blakley_done    : std_logic;
     signal shift_enable    : std_logic;
+    signal shift_done      : std_logic;
 
     signal exp_lsb         : std_logic;
     signal exp_zero        : std_logic;
@@ -50,7 +51,8 @@ architecture rtl of rsa_top_level is
 
     -- Interne data-registere
     signal base_reg        : std_logic_vector(255 downto 0);
-    signal exp_reg         : std_logic_vector(255 downto 0);
+    signal exp_reg_in      : std_logic_vector(255 downto 0);
+    signal exp_reg_out     : std_logic_vector(255 downto 0);
     signal mod_n_reg       : std_logic_vector(255 downto 0);
     signal result_reg      : std_logic_vector(255 downto 0);
 
@@ -82,14 +84,15 @@ begin
             mux_base_sel  => mux_base_sel,
             demux_result_sel=> demux_result_sel,
             mux_exp_sel   => mux_exp_sel,
-            shift_enable  => shift_enable,
-            blakley_start => blakley_start
+            shift_enable_fsm  => shift_enable,
+            blakley_start_fsm => blakley_start
         );
 
     ---------------------------------------------------------------
     -- Blakley modul instansiering og portmap, hvis dere vil at signalene skal hete noe annet i deres moduler, endre venstre side
     ---------------------------------------------------------------
     u_blakley : entity work.blakley_mul
+        generic map (WIDTH => WIDTH)
         port map (
             clk     => clk,
             rst     => reset,
@@ -104,15 +107,17 @@ begin
     ---------------------------------------------------------------
     -- Bitshift modul instansiering og portmap, hvis dere vil at signalene skal hete noe annet i deres moduler, endre venstre side
     ---------------------------------------------------------------
-    u_bitshift : entity work.bitshift
+    u_bitshift : entity work.RL
+        generic map (WIDTH => WIDTH)
         port map (
             clk       => clk,
             reset     => reset,
             enable    => shift_enable,
-            data_in   => exp_reg,
-            data_out  => exp_reg,
-            lsb_out   => exp_lsb,
-            zero_out  => exp_zero
+            data_in   => exp_reg_in,
+            data_out  => exp_reg_out,
+            exp_lsb   => exp_lsb,
+            exp_zero  => exp_zero,
+            exp_done  => shift_done
         );
 
 ------------------------------------------------------------
@@ -121,22 +126,23 @@ begin
 ------------------------------------------------------------
 process(clk, reset)
 begin
-    if reset = '1' then                         -- asynkron reset, burde være der ved oppstart slik at man forsikrer seg at FSM går inn i IDLE ved power-up
-        base_reg     <= (others => '0');
-        exp_reg      <= (others => '0');
-        mod_n_reg    <= (others => '0');
-        result_reg   <= (others => '0');
-        msgout_data  <= (others => '0');
-        rsa_status   <= (others => '0');
+--    if reset = '1' then                         -- asynkron reset, burde være der ved oppstart slik at man forsikrer seg at FSM går inn i IDLE ved power-up
+--        base_reg     <= (others => '0');
+--       exp_reg_in   <= (others => '0');
+--        exp_reg_out  <= (others => '0');
+--        mod_n_reg    <= (others => '0');
+--        result_reg   <= (others => '0');
+--        msgout_data  <= (others => '0');
+--        rsa_status   <= (others => '0');
 
-    elsif rising_edge(clk) then
+    if rising_edge(clk) then
         ------------------------------------------------
-        -- 1. Last inn ny mld og nøkler (LOAD)
+        -- 1. Last inn ny mld og nokler (LOAD)
         ------------------------------------------------
         if (msgin_valid = '1' and msgin_ready = '1') then
             -- Laster base (melding), eksponent, og modulo
             base_reg   <= msgin_data;
-            exp_reg    <= key_e;
+            exp_reg_in <= key_e;
             mod_n_reg  <= key_n;
         end if;
 
@@ -152,6 +158,7 @@ begin
         -- 3. Oppdaterer enten base eller result registeret etter blakley operasjon er utført (MULT_RESULT og SQUARE_BASE)
         ------------------------------------------------
         if (blakley_done = '1') then
+            --blakley_start <= '0';
             -- FSM sier ifra hva slags operasjon som ble utført:
             -- mux_base_sel velger hvor resultatet skal lagres
             if mux_base_sel = "10" then
@@ -166,8 +173,14 @@ begin
         ------------------------------------------------
         -- 4. Shifte eksponenten (SHIFT_EXP) (utført av bitshift.vhd)
         ------------------------------------------------
-        if (shift_enable = '1') then
-            exp_reg <= std_logic_vector(shift_right(unsigned(exp_reg), 1));
+       -- if (shift_enable = '1') then
+            --exp_reg_out <= std_logic_vector(shift_right(unsigned(exp_reg_in), 1));
+       --     shift_enable <= '0';
+       -- end if;
+       
+        if (shift_done = '1') then
+           -- shift_enable <= '0';
+            exp_reg_in <= exp_reg_out;
         end if;
 
         ------------------------------------------------

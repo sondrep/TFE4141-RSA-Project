@@ -6,7 +6,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity fsm is
+entity rsa_fsm is
     port (
         clk, reset        : in  std_logic;
 
@@ -26,12 +26,12 @@ entity fsm is
         mux_base_sel      : out std_logic_vector(1 downto 0);   -- tobits vektor som sier om blakley operasjonen som skal utføres er base eller result
         demux_result_sel    : out std_logic;                      -- eeeeeeeeeeeeeeeehm
         mux_exp_sel       : out std_logic;                      -- kontrollsignal til bitshift MUX'en
-        shift_enable      : out std_logic;                      -- signal som sier om bitshift skal utføres eller ikke
-        blakley_start     : out std_logic                       -- signal som sier om blakley skal utøres eller ikke
+        shift_enable_fsm      : out std_logic;                      -- signal som sier om bitshift skal utføres eller ikke
+        blakley_start_fsm     : out std_logic                       -- signal som sier om blakley skal utøres eller ikke
     );
-end fsm;
+end rsa_fsm;
 
-architecture behavioral of fsm is
+architecture behavioral of rsa_fsm is
     type state_type is (
         IDLE, LOAD, INIT, CHECK_BIT,
         MULT_RESULT, SQUARE_BASE, SHIFT_EXP,
@@ -63,8 +63,8 @@ begin
         mux_base_sel     <= "00";
         demux_result_sel   <= '0';
         mux_exp_sel      <= '0';
-        shift_enable     <= '0';
-        blakley_start    <= '0';
+        shift_enable_fsm     <= '0';
+        blakley_start_fsm    <= '0';
         next_state       <= state;
 
         case state is
@@ -106,7 +106,7 @@ begin
             -- MULT_RESULT: result = result * base mod n
             ------------------------------------------------
             when MULT_RESULT =>
-                blakley_start <= '1';                           -- sier til blakley.vhd at den skal starte result * base mod n operasjonen
+                blakley_start_fsm <= '1';                           -- sier til blakley.vhd at den skal starte result * base mod n operasjonen
                 mux_base_sel  <= "01";                          -- dette signalet indikerer kun hvilken state den er i, kan ses på for feilsøking
                 if blakley_done = '1' then                      -- venter på at blakley.vhd skal si den er ferdig
                     next_state <= SQUARE_BASE;
@@ -116,7 +116,7 @@ begin
             -- SQUARE_BASE: base = base * base mod n
             ------------------------------------------------
             when SQUARE_BASE =>
-                blakley_start <= '1';                           -- sier til blakley at den skal starte base * base mod n operasjonen
+                blakley_start_fsm <= '1';                           -- sier til blakley at den skal starte base * base mod n operasjonen
                 mux_base_sel  <= "10";                          -- 10 indikerer vanlig base mod
                 if blakley_done = '1' then                      -- venter på at blakley.vhd skal si den er ferdig
                     next_state <= SHIFT_EXP;
@@ -126,7 +126,7 @@ begin
             -- SHIFT_EXP: bitshift state
             ------------------------------------------------
             when SHIFT_EXP =>
-                shift_enable <= '1';                            -- Sier til bitshift.vhd at den skal utføre
+                shift_enable_fsm <= '1';                            -- Sier til bitshift.vhd at den skal utføre
                 mux_exp_sel  <= '1';                            -- bitshift MUX'en settes til 1, slik at den repeater eksponenten tilbake etter den har blitt bitshifta
                 if exp_zero = '1' then                          -- exp_zero sier at hele eksponenten har blitt bitshifta, som betyr at meldingen er ferdig prosessert. Går til DONE
                     next_state <= DONE;
