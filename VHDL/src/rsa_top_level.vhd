@@ -11,6 +11,7 @@ entity rsa_top_level is
     port (
         clk            : in  std_logic;
         reset          : in  std_logic;
+        exp_zero_out   : out std_logic;
 
         -- AXIS input (til/fra rsa_msgin)
         msgin_valid    : in  std_logic;
@@ -110,14 +111,14 @@ begin
     u_bitshift : entity work.RL
         generic map (WIDTH => WIDTH)
         port map (
-            clk       => clk,
-            reset     => reset,
-            enable    => shift_enable,
-            data_in   => exp_reg_in,
-            data_out  => exp_reg_out,
-            exp_lsb   => exp_lsb,
-            exp_zero  => exp_zero,
-            exp_done  => shift_done
+            clk         => clk,
+            exp_reset   => reset,
+            exp_enable  => shift_enable,
+            data_in     => exp_reg_in,
+            data_out    => exp_reg_out,
+            exp_lsb     => exp_lsb,
+            exp_zero    => exp_zero,
+            exp_done    => shift_done
         );
 
 ------------------------------------------------------------
@@ -128,7 +129,7 @@ process(clk, reset)
 begin
 --    if reset = '1' then                         -- asynkron reset, burde være der ved oppstart slik at man forsikrer seg at FSM går inn i IDLE ved power-up
 --        base_reg     <= (others => '0');
---       exp_reg_in   <= (others => '0');
+--        exp_reg_in   <= (others => '0');
 --        exp_reg_out  <= (others => '0');
 --        mod_n_reg    <= (others => '0');
 --        result_reg   <= (others => '0');
@@ -177,10 +178,11 @@ begin
             --exp_reg_out <= std_logic_vector(shift_right(unsigned(exp_reg_in), 1));
        --     shift_enable <= '0';
        -- end if;
-       
+       exp_zero_out <= exp_zero;
         if (shift_done = '1') then
            -- shift_enable <= '0';
             exp_reg_in <= exp_reg_out;
+            
         end if;
 
         ------------------------------------------------
