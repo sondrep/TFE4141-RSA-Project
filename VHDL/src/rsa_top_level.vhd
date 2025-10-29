@@ -89,16 +89,16 @@ begin
     ---------------------------------------------------------------
     -- Blakley modul instansiering og portmap, hvis dere vil at signalene skal hete noe annet i deres moduler, endre venstre side
     ---------------------------------------------------------------
-    u_blakley : entity work.blakley
+    u_blakley : entity work.blakley_mul
         port map (
-            clk      => clk,
-            reset    => reset,
-            start    => blakley_start,
-            a        => base_reg,
-            b        => result_reg,
-            n        => mod_n_reg,
-            done     => blakley_done,
-            result   => blakley_result
+            clk     => clk,
+            rst     => reset,
+            start   => blakley_start,
+            A       => base_reg,
+            B       => result_reg,
+            N       => mod_n_reg,
+            done    => blakley_done,
+            R_out   => blakley_result
         );
 
     ---------------------------------------------------------------

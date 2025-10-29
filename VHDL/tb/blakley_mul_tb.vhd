@@ -14,9 +14,15 @@ begin
     DUT: entity work.blakley_mul
         generic map (WIDTH => WIDTH)
         port map (
-            clk => clk, rst => rst, start => start,
-            A => A, B => B, N => N,
-            busy => busy, done => done, R_out => R
+            clk     => clk, 
+            rst     => rst, 
+            start   => start,
+            A       => A, 
+            B       => B, 
+            N       => N,
+            busy    => busy, 
+            done    => done, 
+            R_out   => R
         );
 
     clk <= not clk after 1 ns;
