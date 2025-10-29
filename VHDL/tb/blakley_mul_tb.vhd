@@ -7,11 +7,11 @@ entity tb_blakley_mul is
 end entity;
 
 architecture sim of tb_blakley_mul is
-    constant WIDTH : integer := 8;
+    constant WIDTH : integer := 256;
     signal clk, rst, start, busy, done : std_logic := '0';
     signal A, B, N, R : std_logic_vector(WIDTH-1 downto 0);
 begin
-    UUT: entity work.blakley_mul
+    DUT: entity work.blakley_mul
         generic map (WIDTH => WIDTH)
         port map (
             clk => clk, rst => rst, start => start,
@@ -19,16 +19,16 @@ begin
             busy => busy, done => done, R_out => R
         );
 
-    clk <= not clk after 10 ns;
+    clk <= not clk after 1 ns;
 
     process
     begin
         rst <= '1'; wait for 25 ns;
         rst <= '0'; wait for 20 ns;
 
-        A <= std_logic_vector(to_unsigned(7, WIDTH));
-        B <= std_logic_vector(to_unsigned(11, WIDTH));
-        N <= std_logic_vector(to_unsigned(13, WIDTH));
+        A <= std_logic_vector(to_unsigned(10000, WIDTH));
+        B <= std_logic_vector(to_unsigned(128000, WIDTH));
+        N <= std_logic_vector(to_unsigned(65537, WIDTH));
         wait for 20 ns;
 
         start <= '1'; wait for 20 ns;
