@@ -27,25 +27,28 @@ begin
             exp_reg     <= (others => '0');
             exp_lsb     <= '0';
             exp_zero    <= '0';
+            exp_done    <= '0';
+            data_out    <= (others => '0');
         elsif rising_edge(clk) then
             if exp_enable = '1' then
-                exp_reg     <= data_in;
-                
-                if to_integer(unsigned(exp_reg)) = 0 then
-                
-                    -- FINISHED
+                -- Use current input to derive outputs (no sticky signals)
+                exp_reg <= data_in;
+                if to_integer(unsigned(data_in)) = 0 then
                     exp_zero <= '1';
-                    
+                    exp_lsb  <= '0';
+                    data_out <= (others => '0');
                 else
-                    -- LSB CHECK OF EXP
-                    if exp_reg(0) = '1' then
-                        exp_lsb <= '1';
-                      
-                    end if;
-                    
-                    data_out  <= std_logic_vector(shift_right(unsigned(exp_reg), 1));
+                    exp_zero <= '0';
+                    exp_lsb  <= data_in(0);
+                    data_out <= std_logic_vector(shift_right(unsigned(data_in), 1));
                 end if;
                 exp_done <= '1';
+            else
+                -- Clear status when not enabled
+                exp_done <= '0';
+                exp_lsb  <= '0';
+                exp_zero <= '0';
+                -- keep exp_reg stable (or optionally load 0)
             end if;
         end if;
     end process;
