@@ -28,68 +28,190 @@ entity rsa_top_level is
 end entity;
 
 architecture rtl of rsa_top_level is
-    -- simple internal registers for minimal behavior
-    signal processing      : std_logic := '0';
-    signal latched_data    : std_logic_vector(255 downto 0) := (others => '0');
-    signal out_valid_reg   : std_logic := '0';
-begin
 
-    -- expose a simple exp_zero_out (unused here) and status
-    exp_zero_out <= '0';
+    -- FSM signals
+    signal fsm_msgin_ready      : std_logic;
+    signal fsm_msgout_valid     : std_logic;
+    signal fsm_msgout_last_sig  : std_logic;
+    signal fsm_mux_base_sel     : std_logic_vector(1 downto 0);
+    signal fsm_demux_result_sel : std_logic;
+    signal fsm_mux_exp_sel      : std_logic;
+    signal fsm_shift_enable_fsm : std_logic;
+    signal fsm_blakley_start_fsm: std_logic;
+    signal fsm_exp_lsb          : std_logic;
+    signal fsm_exp_zero         : std_logic;
+    signal fsm_blakley_done_sig : std_logic;
+
+    -- datapath registers
+    signal base_reg    : std_logic_vector(255 downto 0) := (others => '0');
+    signal result_reg  : std_logic_vector(255 downto 0) := (others => '0');
+    signal exp_reg     : std_logic_vector(255 downto 0) := (others => '0');
+    signal n_reg       : std_logic_vector(255 downto 0) := (others => '0');
+
+    -- blakley interface
+    signal bl_A        : std_logic_vector(255 downto 0);
+    signal bl_B        : std_logic_vector(255 downto 0);
+    signal bl_R_out    : std_logic_vector(255 downto 0);
+    signal bl_busy     : std_logic;
+
+    -- RL interface
+    signal rl_exp_done : std_logic;
+    signal rl_data_out : std_logic_vector(255 downto 0);
+
+begin
+    -- expose status pins (simple)
+    exp_zero_out <= fsm_exp_zero;
     rsa_status   <= (others => '0');
 
+    -- connect top-level handshake ports to FSM
+    msgin_ready  <= fsm_msgin_ready;
+    msgout_valid <= fsm_msgout_valid;
+    msgout_last  <= fsm_msgout_last_sig;
+    msgout_data  <= result_reg;    -- always present computed result on the bus
 
-   ------------------------------------------------------------
-    -- Datapath register prosess
-    -- Kontrollerer base, eksponent, modulo, result, og output data
-    ------------------------------------------------------------
-   process(clk, reset)
+    ----------------------------------------------------------------
+    -- Instantiate rsa_fsm (control)
+    ----------------------------------------------------------------
+    FSM_inst : entity work.rsa_fsm
+        port map (
+            clk               => clk,
+            reset             => reset,
+            msgin_valid       => msgin_valid,
+            msgin_ready       => fsm_msgin_ready,
+            msgout_valid      => fsm_msgout_valid,
+            msgout_ready      => msgout_ready,
+            msgout_last       => fsm_msgout_last_sig,
+            exp_lsb           => fsm_exp_lsb,
+            exp_zero          => fsm_exp_zero,
+            blakley_done      => fsm_blakley_done_sig,
+            mux_base_sel      => fsm_mux_base_sel,
+            demux_result_sel  => fsm_demux_result_sel,
+            mux_exp_sel       => fsm_mux_exp_sel,
+            shift_enable_fsm  => fsm_shift_enable_fsm,
+            blakley_start_fsm => fsm_blakley_start_fsm
+        );
+
+    ----------------------------------------------------------------
+    -- Instantiate RL (exponent right-shift unit)
+    ----------------------------------------------------------------
+    RL_inst : entity work.RL
+        generic map ( WIDTH => 256 )
+        port map (
+            clk        => clk,
+            exp_reset  => reset,
+            exp_enable => fsm_shift_enable_fsm,
+            data_in    => exp_reg,
+            exp_done   => rl_exp_done,
+            exp_lsb    => fsm_exp_lsb,
+            exp_zero   => fsm_exp_zero,
+            data_out   => rl_data_out
+        );
+
+    ----------------------------------------------------------------
+    -- Instantiate blakley multiplier
+    ----------------------------------------------------------------
+    BL_inst : entity work.blakley_mul
+        generic map ( WIDTH => 256 )
+        port map (
+            clk   => clk,
+            rst   => reset,
+            start => fsm_blakley_start_fsm,
+            A     => bl_A,
+            B     => bl_B,
+            N     => n_reg,
+            busy  => bl_busy,
+            done  => fsm_blakley_done_sig,
+            R_out => bl_R_out
+        );
+
+    ----------------------------------------------------------------
+    -- Select inputs to blakley based on FSM mux_base_sel
+    ----------------------------------------------------------------
+    bl_mux_proc : process(fsm_mux_base_sel, result_reg, base_reg)
+    begin
+        case fsm_mux_base_sel is
+            when "01" =>   -- MULT_RESULT: A = result, B = base
+                bl_A <= result_reg;
+                bl_B <= base_reg;
+            when "10" =>   -- SQUARE_BASE: A = base, B = base
+                bl_A <= base_reg;
+                bl_B <= base_reg;
+            when others =>
+                bl_A <= (others => '0');
+                bl_B <= (others => '0');
+        end case;
+    end process;
+
+    ----------------------------------------------------------------
+    -- Datapath sequential behaviour (capture inputs, update regs)
+    ----------------------------------------------------------------
+    process(clk, reset)
     begin
         if reset = '1' then
-            -- RESET STATE: sett alle registre til kjent verdi
-            processing    <= '0';
-            latched_data  <= (others => '0');
-            out_valid_reg <= '0';
-            msgin_ready   <= '0';
-            msgout_last   <= '0';
+            base_reg   <= (others => '0');
+            result_reg <= (others => '0');
+            exp_reg    <= (others => '0');
+            n_reg      <= (others => '0');
         elsif rising_edge(clk) then
 
-            -- DEFAULTS for this cycle
-            msgin_ready <= '0';
-            msgout_last <= '0';
+            -- Capture message / keys on handshake (FSM drives fsm_msgin_ready)
+            if fsm_msgin_ready = '1' and msgin_valid = '1' then
+                base_reg <= msgin_data;
+                exp_reg  <= key_e;
+                n_reg    <= key_n;
+            end if;
 
-            ------------------------------------------------
-            -- IDLE / ACCEPT: Venter på ny input (ready høy)
-            -- Merk: vi tester kun msgin_valid her - ikke msgin_ready
-            -- fordi msgin_ready ble satt i denne prosessen og oppdateres etter klokken.
-            ------------------------------------------------
-            if processing = '0' then
-                msgin_ready <= '1';
-                if msgin_valid = '1' then
-                    -- ta imot data (sample msgin_data)
-                    latched_data  <= msgin_data;
-                    processing    <= '1';
-                    out_valid_reg <= '1';
-                    msgout_last   <= msgin_last;
-                end if;
+            -- INIT: if FSM requests demux_result_sel, initialize result := 1
+            if fsm_demux_result_sel = '1' then
+                result_reg <= std_logic_vector(to_unsigned(1, 256));
+            end if;
 
-            ------------------------------------------------
-            -- PROCESSING / PRESENT: Presenter output til consumer tar den
-            ------------------------------------------------
-            else
-                if out_valid_reg = '1' then
-                    -- hold data på msgout_data til msgout_ready pulserer
-                    if msgout_ready = '1' then
-                        out_valid_reg <= '0';
-                        processing    <= '0';
-                    end if;
+            -- When multiplier completes, store output to either result or base
+            if fsm_blakley_done_sig = '1' then
+                if fsm_mux_base_sel = "01" then
+                    -- result := result * base mod n
+                    result_reg <= bl_R_out;
+                elsif fsm_mux_base_sel = "10" then
+                    -- base := base * base mod n
+                    base_reg <= bl_R_out;
                 end if;
             end if;
+
+            -- When RL finishes a shift, update exponent register
+            if rl_exp_done = '1' then
+                exp_reg <= rl_data_out;
+            end if;
+
         end if;
     end process;
 
-    -- OUTPUT ASSIGNMENTS: Alltid drevet fra interne registre
-    msgout_valid <= out_valid_reg;
-    msgout_data  <= latched_data;
+        monitor_proc : process(clk)
+    begin
+        if rising_edge(clk) then
+            if fsm_msgin_ready = '1' and msgin_valid = '1' then
+                report "CAPTURE input: base(7:0)=" & integer'image(to_integer(unsigned(msgin_data(7 downto 0))))
+                       severity note;
+            end if;
+
+            if fsm_demux_result_sel = '1' then
+                report "FSM: INIT result := 1" severity note;
+            end if;
+
+            if fsm_blakley_start_fsm = '1' then
+                report "FSM: blakley_start asserted, mux=" & to_string(fsm_mux_base_sel) severity note;
+            end if;
+
+            if fsm_blakley_done_sig = '1' then
+                report "BL_DONE: R_out[7:0]=" & integer'image(to_integer(unsigned(bl_R_out(7 downto 0))))
+                       & "  base[7:0]=" & integer'image(to_integer(unsigned(base_reg(7 downto 0))))
+                       & "  result[7:0]=" & integer'image(to_integer(unsigned(result_reg(7 downto 0))))
+                       severity note;
+            end if;
+
+            if msgout_valid = '1' then
+                report "MSGOUT valid: result[7:0]=" & integer'image(to_integer(unsigned(result_reg(7 downto 0)))) severity note;
+            end if;
+        end if;
+    end process;
 
 end architecture;
