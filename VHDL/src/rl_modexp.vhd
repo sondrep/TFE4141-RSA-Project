@@ -76,6 +76,7 @@ begin
 
             when CHECK_EXP_BIT_MUL =>
                 if bit_index < WIDTH then
+                    blakley_r_read_done <= '0';
                     if exponent(bit_index) = '1' then
                         -- Start Blakley multiplication
                         blakley_A <= STD_LOGIC_VECTOR(temp_result);
@@ -92,6 +93,7 @@ begin
                 end if;
 
             when SQUARE_MUL =>
+                blakley_r_read_done <= '0';
                 blakley_A <= STD_LOGIC_VECTOR(temp_base);
                 blakley_B <= STD_LOGIC_VECTOR(temp_base);
                 blakley_start <= '1';
@@ -103,11 +105,14 @@ begin
                     temp_result := UNSIGNED(blakley_R_out);
                     blakley_r_read_done <= '1';
                     blakley_start <= '0';
-                    blakley_r_read_done <= '0';
                     state <= SQUARE_MUL;
+                else 
+                    blakley_r_read_done <= '0';
+                    blakley_start <= '0';
                 end if;
 
             when WAIT_MUL_BB =>
+                blakley_r_read_done <= '0';
                 if blakley_done = '1' then
                     -- Update temp_base with the squared result
                     temp_base := UNSIGNED(blakley_R_out);
@@ -116,6 +121,9 @@ begin
                     -- Move to next bit
                     bit_index <= bit_index + 1;
                     state <= CHECK_EXP_BIT_MUL;
+                else 
+                    blakley_r_read_done <= '0';
+                    blakley_start <= '0';
                 end if;
             
             when MSG_DONE =>

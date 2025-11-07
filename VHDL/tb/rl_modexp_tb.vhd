@@ -29,18 +29,38 @@ begin
 
     process
     begin
-        rst <= '1'; wait for 100 ns;
-        rst <= '0'; wait for 100 ns;
+        rst <= '1'; wait for 5 ns;
+        rst <= '0'; wait for 5 ns;
         
-        rdy_for_msg <= '1'; wait for 50 ns;
+        rdy_for_msg <= '1'; wait for 5 ns;
         msg_in <= std_logic_vector(to_unsigned(2, WIDTH));
         key_e <= std_logic_vector(to_unsigned(2, WIDTH));
         key_n <= std_logic_vector(to_unsigned(7, WIDTH));
-        wait for 100 ns;
+        wait for 5 ns;
 
         start <= '1';
+        wait for 10 ns;
+        start <= '0';
 
         wait until done = '1';
+        wait for 10 ns;
+
+        rst <= '1'; wait for 5 ns;
+        rst <= '0'; wait for 5 ns;
         
+        rdy_for_msg <= '1'; wait for 5 ns;
+        msg_in <= std_logic_vector(to_unsigned(2, WIDTH));
+        key_e <= std_logic_vector(to_unsigned(4, WIDTH));
+        key_n <= std_logic_vector(to_unsigned(7, WIDTH));
+        wait for 5 ns;
+
+        start <= '1';
+        wait for 10 ns;
+        start <= '0';
+
+        wait until done = '1';
+        wait for 10 ns;
+
+
     end process;
 end architecture;
