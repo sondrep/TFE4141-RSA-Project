@@ -71,13 +71,17 @@ begin
                     blakley_start <= '0';
                     blakley_rst <= '0';
                     done <= '0';
+                    temp_result := to_unsigned(1, WIDTH);
+                    temp_base := unsigned(base);
                     result <= (others => '0');
                 end if;
 
             when CHECK_EXP_BIT_MUL =>
                 if bit_index < WIDTH then
                     blakley_r_read_done <= '0';
-                    if exponent(bit_index) = '1' then
+                    if unsigned(exponent(WIDTH-1 downto bit_index)) = 0 then
+                        state <= MSG_DONE;
+                    elsif exponent(bit_index) = '1' then
                         -- Start Blakley multiplication
                         blakley_A <= STD_LOGIC_VECTOR(temp_result);
                         blakley_B <= STD_LOGIC_VECTOR(temp_base);
