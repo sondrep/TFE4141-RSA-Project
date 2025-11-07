@@ -53,6 +53,12 @@ architecture rtl of rsa_top_level is
     signal bl_B        : std_logic_vector(255 downto 0);
     signal bl_R_out    : std_logic_vector(255 downto 0);
     signal bl_busy     : std_logic;
+    signal blakley_read_done : std_logic := '0';  -- consumer ack for blakley done
+
+    -- <-- NEW handshake/latch signals -->
+    signal blakley_op_sel_reg : std_logic_vector(1 downto 0) := (others => '0');
+    signal blakley_done_prev  : std_logic := '0';
+    signal blakley_read_ack   : std_logic := '0';
 
     -- RL interface
     signal rl_exp_done : std_logic;
@@ -67,6 +73,7 @@ begin
     msgin_ready  <= fsm_msgin_ready;
     msgout_valid <= fsm_msgout_valid;
     msgout_last  <= fsm_msgout_last_sig;
+    blakley_read_done <= blakley_read_ack;  -- drive output port to multiplier from registered ack
     msgout_data  <= result_reg;    -- always present computed result on the bus
 
     ----------------------------------------------------------------
@@ -121,7 +128,8 @@ begin
             N     => n_reg,
             busy  => bl_busy,
             done  => fsm_blakley_done_sig,
-            R_out => bl_R_out
+            R_out => bl_R_out,
+            R_read_done => blakley_read_done   -- consumer ack: clear done when '1'
         );
 
     ----------------------------------------------------------------
@@ -152,7 +160,18 @@ begin
             result_reg <= (others => '0');
             exp_reg    <= (others => '0');
             n_reg      <= (others => '0');
+            blakley_op_sel_reg <= (others => '0');
+            blakley_done_prev  <= '0';
+            blakley_read_ack   <= '0';
         elsif rising_edge(clk) then
+
+            -- sample done one cycle (edge-detect)
+            blakley_done_prev <= fsm_blakley_done_sig;
+
+            -- latch which operation we started when FSM asserts start
+            if fsm_blakley_start_fsm = '1' then
+                blakley_op_sel_reg <= fsm_mux_base_sel;
+            end if;
 
             -- Capture message / keys on handshake (FSM drives fsm_msgin_ready)
             if fsm_msgin_ready = '1' and msgin_valid = '1' then
@@ -166,15 +185,16 @@ begin
                 result_reg <= std_logic_vector(to_unsigned(1, 256));
             end if;
 
-            -- When multiplier completes, store output to either result or base
-            if fsm_blakley_done_sig = '1' then
-                if fsm_mux_base_sel = "01" then
-                    -- result := result * base mod n
+            -- When we observed blakley done on previous cycle, consume R_out now
+            if blakley_done_prev = '1' and blakley_read_ack = '0' then
+                if blakley_op_sel_reg = "01" then
                     result_reg <= bl_R_out;
-                elsif fsm_mux_base_sel = "10" then
-                    -- base := base * base mod n
+                elsif blakley_op_sel_reg = "10" then
                     base_reg <= bl_R_out;
                 end if;
+                blakley_read_ack <= '1';  -- assert ack for exactly one clock
+            elsif blakley_read_ack = '1' then
+                blakley_read_ack <= '0';
             end if;
 
             -- When RL finishes a shift, update exponent register
