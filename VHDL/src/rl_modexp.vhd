@@ -30,7 +30,7 @@ entity exponentiation is
 end entity;
 
 architecture expBehave of exponentiation is
-    type state_type is (IDLE, CHECK_EXP_BIT_MUL, SQUARE_MUL, WAIT_MUL_RB, WAIT_MUL_BB, MSG_DONE, RESET);
+    type state_type is (IDLE, CHECK_EXP_BIT_MUL, SQUARE_MUL, WAIT_MUL_RB, WAIT_MUL_BB, MSG_DONE);
     signal state: state_type := IDLE;
     signal bit_index: integer range 0 to C_block_size-1;
 
@@ -70,9 +70,11 @@ begin
         blakley_start <= '0';
         blakley_reset_n <= '0';
     elsif rising_edge(clk) then
+        blakley_reset_n <= '1';
         case state is
             when IDLE =>
                 ready_in <= '1';
+                valid_out <= '0';
                 if valid_in = '1' then
                     blakley_r_read_done <= '0';
                     state <= CHECK_EXP_BIT_MUL;
@@ -157,15 +159,9 @@ begin
                 ready_in <= '0';
                 result <= STD_LOGIC_VECTOR(temp_result);
                 valid_out <= '1';
-                state <= IDLE;
-
-            when RESET =>
-                state <= IDLE;
-                bit_index <= 0;
-                temp_result := to_unsigned(1, C_block_size);
-                temp_message := (others => '0');
-                blakley_start <= '0';
-                blakley_reset_n <= '0';
+                if ready_out = '1' then
+                    state <= IDLE;
+                end if;
 
         end case;
     end if;

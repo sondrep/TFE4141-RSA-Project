@@ -77,9 +77,7 @@ begin
 
                 -- a = (2a) % n
                 tmp := shift_left(resize(a_reg, C_block_size+1), 1);
-                if tmp >= n_ext - SHIFT_LEFT(n_ext, 1) then
-                    tmp := tmp - SHIFT_LEFT(n_ext, 1);
-                elsif tmp >= n_ext then
+                if tmp >= n_ext then
                     tmp := tmp - n_ext;
                 end if;
                 a_next := tmp(C_block_size-1 downto 0);

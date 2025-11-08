@@ -34,7 +34,7 @@ begin
         rst <= '0'; wait for 10 ns;
         rst <= '1';
         msg_in <= (others => '0');
-        -- wait until mod_exp_ready_in = '1';
+        wait until mod_exp_ready_in = '1';
         msg_in <= x"0000000011111111222222223333333344444444555555556666666677777777";
         key_n <=  x"99925173ad65686715385ea800cd28120288fc70a9bc98dd4c90d676f8ff768d";
         key_e <=  x"0000000000000000000000000000000000000000000000000000000000010001";
@@ -47,10 +47,7 @@ begin
         wait until done = '1';
         wait for 10 ns;
 
-        rst <= '0'; wait for 10 ns;
-        rst <= '1';
-
-        -- wait until mod_exp_ready_in = '1';
+        wait until mod_exp_ready_in = '1';
         msg_in <= result;
         key_n <= x"99925173ad65686715385ea800cd28120288fc70a9bc98dd4c90d676f8ff768d";
         key_e <= x"0cea1651ef44be1f1f1476b7539bed10d73e3aac782bd9999a1e5a790932bfe9";
