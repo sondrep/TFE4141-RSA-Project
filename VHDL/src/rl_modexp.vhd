@@ -30,16 +30,15 @@ entity exponentiation is
 end entity;
 
 architecture expBehave of exponentiation is
-    type state_type is (IDLE, CHECK_EXP_BIT_MUL, SQUARE_MUL, WAIT_MUL_RB, WAIT_MUL_BB, MSG_DONE);
-    signal state: state_type;
+    type state_type is (IDLE, CHECK_EXP_BIT_MUL, SQUARE_MUL, WAIT_MUL_RB, WAIT_MUL_BB, MSG_DONE, RESET);
+    signal state: state_type := IDLE;
     signal bit_index: integer range 0 to C_block_size-1;
 
-    signal blakley_rst : STD_LOGIC;
+    signal blakley_reset_n : STD_LOGIC := '0';
     signal blakley_start : STD_LOGIC;
     signal blakley_A : STD_LOGIC_VECTOR(C_block_size-1 downto 0);
     signal blakley_B : STD_LOGIC_VECTOR(C_block_size-1 downto 0);
     signal blakley_r_read_done : STD_LOGIC;
-    signal blakley_busy : STD_LOGIC;
     signal blakley_done : STD_LOGIC;
     signal blakley_R_out : STD_LOGIC_VECTOR(C_block_size-1 downto 0);
 begin
@@ -49,13 +48,12 @@ begin
     )
      port map(
         clk => clk,
-        rst => blakley_rst,
+        reset_n => blakley_reset_n,
         start => blakley_start,
         A => blakley_A,
         B => blakley_B,
         N => modulus,
         R_read_done => blakley_r_read_done,
-        busy => blakley_busy,
         done => blakley_done,
         R_out => blakley_R_out
     );
@@ -68,17 +66,19 @@ begin
         state <= IDLE;
         bit_index <= 0;
         temp_result := to_unsigned(1, C_block_size);
-        temp_message := unsigned(message);
+        temp_message := (others => '0');
         blakley_start <= '0';
-        blakley_rst <= '1';
+        blakley_reset_n <= '0';
     elsif rising_edge(clk) then
         case state is
             when IDLE =>
+                ready_in <= '1';
                 if valid_in = '1' then
+                    blakley_r_read_done <= '0';
                     state <= CHECK_EXP_BIT_MUL;
                     bit_index <= 0;
                     blakley_start <= '0';
-                    blakley_rst <= '0';
+                    blakley_reset_n <= '1';
                     valid_out <= '0';
                     temp_result := to_unsigned(1, C_block_size);
                     temp_message := unsigned(message);
@@ -86,6 +86,9 @@ begin
                 end if;
 
             when CHECK_EXP_BIT_MUL =>
+                blakley_reset_n <= '1';
+                ready_in <= '0';
+                valid_out <= '0';
                 if bit_index < C_block_size then
                     blakley_r_read_done <= '0';
                     if unsigned(key(C_block_size-1 downto bit_index)) = 0 then
@@ -106,6 +109,9 @@ begin
                 end if;
 
             when SQUARE_MUL =>
+                blakley_reset_n <= '1';
+                valid_out <= '0';
+                ready_in <= '0';
                 blakley_r_read_done <= '0';
                 blakley_A <= STD_LOGIC_VECTOR(temp_message);
                 blakley_B <= STD_LOGIC_VECTOR(temp_message);
@@ -113,6 +119,9 @@ begin
                 state <= WAIT_MUL_BB;
 
             when WAIT_MUL_RB =>
+                blakley_reset_n <= '1';
+                valid_out <= '0';
+                ready_in <= '0';
                 if blakley_done = '1' then
                     -- Update temp_result with the result
                     temp_result := UNSIGNED(blakley_R_out);
@@ -125,6 +134,9 @@ begin
                 end if;
 
             when WAIT_MUL_BB =>
+                blakley_reset_n <= '1';
+                valid_out <= '0';
+                ready_in <= '0';
                 blakley_r_read_done <= '0';
                 if blakley_done = '1' then
                     -- Update temp_message with the squared result
@@ -138,10 +150,22 @@ begin
                     blakley_r_read_done <= '0';
                     blakley_start <= '0';
                 end if;
-            
+
             when MSG_DONE =>
+                blakley_r_read_done <= '0';
+                blakley_reset_n <= '0';
+                ready_in <= '0';
                 result <= STD_LOGIC_VECTOR(temp_result);
                 valid_out <= '1';
+                state <= IDLE;
+
+            when RESET =>
+                state <= IDLE;
+                bit_index <= 0;
+                temp_result := to_unsigned(1, C_block_size);
+                temp_message := (others => '0');
+                blakley_start <= '0';
+                blakley_reset_n <= '0';
 
         end case;
     end if;

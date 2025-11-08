@@ -8,14 +8,12 @@ entity blakley_mul is
     );
     port (
         clk         : in  std_logic;
-        rst         : in  std_logic;
+        reset_n     : in  std_logic;
         start       : in  std_logic;
         A           : in  std_logic_vector(C_block_size-1 downto 0);
         B           : in  std_logic_vector(C_block_size-1 downto 0);
         N           : in  std_logic_vector(C_block_size-1 downto 0);
         R_read_done : in  std_logic;  -- consumer ack: clear done when '1'
-
-        busy        : out std_logic;
         done        : out std_logic;  -- high when result is valid, stays high until R_read_done
         R_out       : out std_logic_vector(C_block_size-1 downto 0)
     );
@@ -27,14 +25,14 @@ architecture rtl of blakley_mul is
     signal running             : std_logic := '0';
     signal result_valid        : std_logic := '0';
 begin
-    process(clk, rst)
+    process(clk, reset_n)
         variable tmp    : unsigned(C_block_size downto 0);
         variable n_ext  : unsigned(C_block_size downto 0);
         variable r_next : unsigned(C_block_size-1 downto 0);
         variable a_next : unsigned(C_block_size-1 downto 0);
         variable b_next : unsigned(C_block_size-1 downto 0);
     begin
-        if rst = '1' then
+        if reset_n = '0' then
             a_reg        <= (others => '0');
             b_reg        <= (others => '0');
             n_reg        <= (others => '0');
@@ -57,7 +55,7 @@ begin
                 running <= '1';
 
             elsif running = '1' then
-                -- LSB-first add-and-shift:
+                -- LSB-fireset_n add-and-shift:
                 -- if b(0)=1: r = (r + a) % n
                 -- a = (2a) % n
                 -- b = b >> 1
@@ -79,7 +77,9 @@ begin
 
                 -- a = (2a) % n
                 tmp := shift_left(resize(a_reg, C_block_size+1), 1);
-                if tmp >= n_ext then
+                if tmp >= n_ext - SHIFT_LEFT(n_ext, 1) then
+                    tmp := tmp - SHIFT_LEFT(n_ext, 1);
+                elsif tmp >= n_ext then
                     tmp := tmp - n_ext;
                 end if;
                 a_next := tmp(C_block_size-1 downto 0);
@@ -98,7 +98,6 @@ begin
         end if;
     end process;
 
-    busy  <= running;
     done  <= result_valid;
     R_out <= std_logic_vector(r_reg);
 end architecture;

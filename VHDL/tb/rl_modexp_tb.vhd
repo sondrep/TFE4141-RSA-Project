@@ -10,6 +10,7 @@ architecture sim of tb_rl_modexp is
     signal clk, rst, start, busy, done : std_logic := '0';
     signal rdy_for_msg : STD_LOGIC := '0';
     signal msg_in, key_e, key_n, result : std_logic_vector(C_block_size-1 downto 0);
+    signal mod_exp_ready_in : STD_LOGIC := '0';
 begin
     DUT: entity work.exponentiation
         generic map (C_block_size => C_block_size)
@@ -22,20 +23,21 @@ begin
             modulus         => key_n,
             result          => result,
             valid_out       => done,
-            ready_out       => rdy_for_msg
+            ready_out       => rdy_for_msg,
+            ready_in => mod_exp_ready_in
         );
 
-    clk <= not clk after 10 ns;
+    clk <= not clk after 2.5 ns;
 
     process
     begin
-        rst <= '0'; wait for 20 ns;
-        rst <= '1'; wait for 20 ns;
-        
-        rdy_for_msg <= '1'; wait for 20 ns;
-        msg_in <= std_logic_vector(to_unsigned(2, C_block_size));
-        key_e <= std_logic_vector(to_unsigned(2, C_block_size));
-        key_n <= std_logic_vector(to_unsigned(7, C_block_size));
+        rst <= '0'; wait for 10 ns;
+        rst <= '1';
+        msg_in <= (others => '0');
+        -- wait until mod_exp_ready_in = '1';
+        msg_in <= x"0000000011111111222222223333333344444444555555556666666677777777";
+        key_n <=  x"99925173ad65686715385ea800cd28120288fc70a9bc98dd4c90d676f8ff768d";
+        key_e <=  x"0000000000000000000000000000000000000000000000000000000000010001";
         wait for 5 ns;
 
         start <= '1';
@@ -43,32 +45,16 @@ begin
         start <= '0';
 
         wait until done = '1';
-        wait for 20 ns;
+        wait for 10 ns;
 
-        rst <= '0'; wait for 5 ns;
-        rst <= '1'; wait for 5 ns;
-        
-        rdy_for_msg <= '1'; wait for 5 ns;
-        msg_in <= std_logic_vector(to_unsigned(2, C_block_size));
-        key_e <= std_logic_vector(to_unsigned(4, C_block_size));
-        key_n <= std_logic_vector(to_unsigned(7, C_block_size));
-        wait for 20 ns;
+        rst <= '0'; wait for 10 ns;
+        rst <= '1';
 
-        start <= '1';
+        -- wait until mod_exp_ready_in = '1';
+        msg_in <= result;
+        key_n <= x"99925173ad65686715385ea800cd28120288fc70a9bc98dd4c90d676f8ff768d";
+        key_e <= x"0cea1651ef44be1f1f1476b7539bed10d73e3aac782bd9999a1e5a790932bfe9";
         wait for 20 ns;
-        start <= '0';
-
-        wait until done = '1';
-        wait for 20 ns;
-        
-        rst <= '0'; wait for 20 ns;
-        rst <= '1'; wait for 20 ns;
-        
-        rdy_for_msg <= '1'; wait for 20 ns;
-        msg_in <= std_logic_vector(to_unsigned(6969, C_block_size));
-        key_e <= std_logic_vector(to_unsigned(7172, C_block_size));
-        key_n <= std_logic_vector(to_unsigned(65537, C_block_size));
-        wait for 5 ns;
 
         start <= '1';
         wait for 20 ns;
