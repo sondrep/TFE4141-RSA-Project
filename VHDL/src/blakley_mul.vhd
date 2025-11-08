@@ -4,35 +4,35 @@ use ieee.numeric_std.all;
 
 entity blakley_mul is
     generic (
-        WIDTH : integer := 8
+        C_block_size : integer := 256
     );
     port (
         clk         : in  std_logic;
         rst         : in  std_logic;
         start       : in  std_logic;
-        A           : in  std_logic_vector(WIDTH-1 downto 0);
-        B           : in  std_logic_vector(WIDTH-1 downto 0);
-        N           : in  std_logic_vector(WIDTH-1 downto 0);
+        A           : in  std_logic_vector(C_block_size-1 downto 0);
+        B           : in  std_logic_vector(C_block_size-1 downto 0);
+        N           : in  std_logic_vector(C_block_size-1 downto 0);
         R_read_done : in  std_logic;  -- consumer ack: clear done when '1'
 
         busy        : out std_logic;
         done        : out std_logic;  -- high when result is valid, stays high until R_read_done
-        R_out       : out std_logic_vector(WIDTH-1 downto 0)
+        R_out       : out std_logic_vector(C_block_size-1 downto 0)
     );
 end entity;
 
 architecture rtl of blakley_mul is
-    signal a_reg, b_reg, n_reg : unsigned(WIDTH-1 downto 0);
-    signal r_reg               : unsigned(WIDTH-1 downto 0);
+    signal a_reg, b_reg, n_reg : unsigned(C_block_size-1 downto 0);
+    signal r_reg               : unsigned(C_block_size-1 downto 0);
     signal running             : std_logic := '0';
     signal result_valid        : std_logic := '0';
 begin
     process(clk, rst)
-        variable tmp    : unsigned(WIDTH downto 0);
-        variable n_ext  : unsigned(WIDTH downto 0);
-        variable r_next : unsigned(WIDTH-1 downto 0);
-        variable a_next : unsigned(WIDTH-1 downto 0);
-        variable b_next : unsigned(WIDTH-1 downto 0);
+        variable tmp    : unsigned(C_block_size downto 0);
+        variable n_ext  : unsigned(C_block_size downto 0);
+        variable r_next : unsigned(C_block_size-1 downto 0);
+        variable a_next : unsigned(C_block_size-1 downto 0);
+        variable b_next : unsigned(C_block_size-1 downto 0);
     begin
         if rst = '1' then
             a_reg        <= (others => '0');
@@ -61,7 +61,7 @@ begin
                 -- if b(0)=1: r = (r + a) % n
                 -- a = (2a) % n
                 -- b = b >> 1
-                n_ext := resize(n_reg, WIDTH+1);
+                n_ext := resize(n_reg, C_block_size+1);
 
                 -- defaults
                 r_next := r_reg;
@@ -70,19 +70,19 @@ begin
 
                 -- conditional add: r = (r + a) % n
                 if b_reg(0) = '1' then
-                    tmp := resize(r_reg, WIDTH+1) + resize(a_reg, WIDTH+1);
+                    tmp := resize(r_reg, C_block_size+1) + resize(a_reg, C_block_size+1);
                     if tmp >= n_ext then
                         tmp := tmp - n_ext;
                     end if;
-                    r_next := tmp(WIDTH-1 downto 0);
+                    r_next := tmp(C_block_size-1 downto 0);
                 end if;
 
                 -- a = (2a) % n
-                tmp := shift_left(resize(a_reg, WIDTH+1), 1);
+                tmp := shift_left(resize(a_reg, C_block_size+1), 1);
                 if tmp >= n_ext then
                     tmp := tmp - n_ext;
                 end if;
-                a_next := tmp(WIDTH-1 downto 0);
+                a_next := tmp(C_block_size-1 downto 0);
 
                 -- commit
                 r_reg <= r_next;
