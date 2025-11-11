@@ -45,7 +45,9 @@ begin
         start <= '0';
 
         wait until done = '1';
-        wait for 10 ns;
+        rdy_for_msg <= '1';  -- acknowledge
+        wait until rising_edge(clk);
+        rdy_for_msg <= '0';
 
         wait until mod_exp_ready_in = '1';
         msg_in <= result;

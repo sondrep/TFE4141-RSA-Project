@@ -30,7 +30,7 @@ entity exponentiation is
 end entity;
 
 architecture expBehave of exponentiation is
-    type state_type is (IDLE, CHECK_EXP_BIT_MUL, SQUARE_MUL, WAIT_MUL_RB, WAIT_MUL_BB, MSG_DONE);
+    type state_type is (IDLE, CHECK_EXP_BIT_MUL, SQUARE_MUL, WAIT_MUL_RB, WAIT_MUL_BB, MSG_DONE, REDUCE_BASE);
     signal state: state_type := IDLE;
     signal bit_index: integer range 0 to C_block_size-1;
 
@@ -41,6 +41,9 @@ architecture expBehave of exponentiation is
     signal blakley_r_read_done : STD_LOGIC;
     signal blakley_done : STD_LOGIC;
     signal blakley_R_out : STD_LOGIC_VECTOR(C_block_size-1 downto 0);
+
+    signal result_valid_reg : STD_LOGIC;
+    signal ready_out_reg : STD_LOGIC;
 begin
     blakley_mul_inst: entity work.blakley_mul
      generic map(
@@ -62,6 +65,12 @@ begin
         variable temp_result: unsigned(C_block_size-1 downto 0);
         variable temp_message: unsigned(C_block_size-1 downto 0);
     begin
+    if ready_out <= '1' then
+            ready_out_reg <= '1';
+    else
+        ready_out_reg <= '0';
+    end if;
+
     if reset_n = '0' then
         state <= IDLE;
         bit_index <= 0;
@@ -70,27 +79,34 @@ begin
         blakley_start <= '0';
         blakley_reset_n <= '0';
     elsif rising_edge(clk) then
-        blakley_reset_n <= '1';
         case state is
+            when REDUCE_BASE =>
+                    -- multi-cycle simple reduction: subtract modulus until base < modulus
+                    if temp_message >= unsigned(modulus) then
+                        temp_message := temp_message - unsigned(modulus);
+                    else
+                        state <= CHECK_EXP_BIT_MUL;
+                    end if;
+            
             when IDLE =>
                 ready_in <= '1';
-                valid_out <= '0';
                 if valid_in = '1' then
+                    ready_out_reg <= '0';
+                    valid_out <= '0';
+                    result_valid_reg <= '0';
+                    blakley_reset_n <= '1';
                     blakley_r_read_done <= '0';
-                    state <= CHECK_EXP_BIT_MUL;
+                    state <= REDUCE_BASE;
                     bit_index <= 0;
                     blakley_start <= '0';
                     blakley_reset_n <= '1';
-                    valid_out <= '0';
                     temp_result := to_unsigned(1, C_block_size);
                     temp_message := unsigned(message);
-                    result <= (others => '0');
                 end if;
 
             when CHECK_EXP_BIT_MUL =>
                 blakley_reset_n <= '1';
                 ready_in <= '0';
-                valid_out <= '0';
                 if bit_index < C_block_size then
                     blakley_r_read_done <= '0';
                     if unsigned(key(C_block_size-1 downto bit_index)) = 0 then
@@ -112,7 +128,6 @@ begin
 
             when SQUARE_MUL =>
                 blakley_reset_n <= '1';
-                valid_out <= '0';
                 ready_in <= '0';
                 blakley_r_read_done <= '0';
                 blakley_A <= STD_LOGIC_VECTOR(temp_message);
@@ -122,7 +137,6 @@ begin
 
             when WAIT_MUL_RB =>
                 blakley_reset_n <= '1';
-                valid_out <= '0';
                 ready_in <= '0';
                 if blakley_done = '1' then
                     -- Update temp_result with the result
@@ -137,7 +151,6 @@ begin
 
             when WAIT_MUL_BB =>
                 blakley_reset_n <= '1';
-                valid_out <= '0';
                 ready_in <= '0';
                 blakley_r_read_done <= '0';
                 if blakley_done = '1' then
@@ -158,8 +171,11 @@ begin
                 blakley_reset_n <= '0';
                 ready_in <= '0';
                 result <= STD_LOGIC_VECTOR(temp_result);
-                valid_out <= '1';
-                if ready_out = '1' then
+                if ready_out_reg = '1' then
+                    valid_out <= '1';
+                    result_valid_reg <= '1';
+                end if;
+                if result_valid_reg = '1' and ready_out = '1' then
                     state <= IDLE;
                 end if;
 
