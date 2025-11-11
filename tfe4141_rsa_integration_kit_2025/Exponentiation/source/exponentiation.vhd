@@ -166,16 +166,16 @@ begin
         R_out => blakley_R_out
     );
 
-    --process(ready_out, clk)
-    --begin
-    --    if ready_out = '1' and state = MSG_DONE and valid_out_reg = '1' then
-    --        ready_out_reg <= '1';
-    --        valid_out <= '1';
-    --    else
-    --        valid_out <= '0';
-    --        ready_out_reg <= '0';
-    --    end if;
-    --end process;
+    process(ready_out, clk)
+    begin
+        if ready_out = '1' and state = MSG_DONE and valid_out_reg = '1' then
+            ready_out_reg <= '1';
+            valid_out <= '1';
+        else
+            valid_out <= '0';
+            ready_out_reg <= '0';
+        end if;
+    end process;
     
     process(clk, valid_in)
     begin
