@@ -1,42 +1,67 @@
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
+entity tb_rl_modexp is
+end entity;
 
-entity exponentiation_tb is
-	generic (
-		C_block_size : integer := 256
-	);
-end exponentiation_tb;
-
-
-architecture expBehave of exponentiation_tb is
-
-	signal message 		: STD_LOGIC_VECTOR ( C_block_size-1 downto 0 );
-	signal key 			: STD_LOGIC_VECTOR ( C_block_size-1 downto 0 );
-	signal valid_in 	: STD_LOGIC;
-	signal ready_in 	: STD_LOGIC;
-	signal ready_out 	: STD_LOGIC;
-	signal valid_out 	: STD_LOGIC;
-	signal result 		: STD_LOGIC_VECTOR(C_block_size-1 downto 0);
-	signal modulus 		: STD_LOGIC_VECTOR(C_block_size-1 downto 0);
-	signal clk 			: STD_LOGIC;
-	signal restart 		: STD_LOGIC;
-	signal reset_n 		: STD_LOGIC;
-
+architecture sim of tb_rl_modexp is
+    constant C_block_size : integer := 256;
+    signal clk, rst, start, busy, done : std_logic := '0';
+    signal rdy_for_msg : STD_LOGIC := '0';
+    signal msg_in, key_e, key_n, result : std_logic_vector(C_block_size-1 downto 0);
+    signal mod_exp_ready_in : STD_LOGIC := '0';
 begin
-	i_exponentiation : entity work.exponentiation
-		port map (
-			message   => message  ,
-			key       => key      ,
-			valid_in  => valid_in ,
-			ready_in  => ready_in ,
-			ready_out => ready_out,
-			valid_out => valid_out,
-			result    => result   ,
-			modulus   => modulus  ,
-			clk       => clk      ,
-			reset_n   => reset_n
-		);
+    DUT: entity work.exponentiation
+        generic map (C_block_size => C_block_size)
+        port map (
+            clk             => clk,
+            reset_n         => rst,
+            valid_in        => start,
+            message         => msg_in,
+            key             => key_e,
+            modulus         => key_n,
+            result          => result,
+            valid_out       => done,
+            ready_out       => rdy_for_msg,
+            ready_in => mod_exp_ready_in
+        );
+
+    clk <= not clk after 10 ns;
+
+    process
+    begin
+        rst <= '0'; wait for 10 ns;
+        rst <= '1';
+        msg_in <= (others => '0');
+        wait until mod_exp_ready_in = '1';
+        msg_in <= x"0000000011111111222222223333333344444444555555556666666677777777";
+        key_n <=  x"99925173ad65686715385ea800cd28120288fc70a9bc98dd4c90d676f8ff768d";
+        key_e <=  x"0000000000000000000000000000000000000000000000000000000000010001";
+        wait for 5 ns;
+
+        start <= '1';
+        wait for 20 ns;
+        start <= '0';
+
+        wait until done = '1';
+        rdy_for_msg <= '1';  -- acknowledge
+        wait until rising_edge(clk);
+        rdy_for_msg <= '0';
+
+        wait until mod_exp_ready_in = '1';
+        msg_in <= result;
+        key_n <= x"99925173ad65686715385ea800cd28120288fc70a9bc98dd4c90d676f8ff768d";
+        key_e <= x"0cea1651ef44be1f1f1476b7539bed10d73e3aac782bd9999a1e5a790932bfe9";
+        wait for 20 ns;
+
+        start <= '1';
+        wait for 20 ns;
+        start <= '0';
+
+        wait until done = '1';
+        wait for 20 ns;
 
 
-end expBehave;
+    end process;
+end architecture;
