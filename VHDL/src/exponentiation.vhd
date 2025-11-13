@@ -293,6 +293,7 @@ begin
                 
             when WAIT_FOR_NEW_INPUT =>
 				ready_in_reg <= '1';
+                valid_out <= '0';
                 if valid_in_reg = '1' then
 					ready_in_reg <= '0';
 					state <= START_PROCESSING;
@@ -310,7 +311,7 @@ use IEEE.NUMERIC_STD.ALL;
 entity exponentiation is
     generic (
         C_block_size : integer := 256;
-        NUM_CORES : integer := 2
+        NUM_CORES : integer := 10
     );
     port (
         -- Utility
@@ -345,6 +346,7 @@ architecture expBehave of exponentiation is
     signal core_valid_in, core_ready_in, core_valid_out, core_ready_out : std_logic_vector(NUM_CORES-1 downto 0) := (others => '0');
     type core_vec is array (0 to NUM_CORES-1) of std_logic_vector(C_block_size-1 downto 0);
     signal core_message, core_result : core_vec;
+
 begin
     gen_cores : for i in 0 to NUM_CORES-1 generate
         core_i : entity work.rl_modexp
@@ -390,6 +392,9 @@ begin
 
     process(clk)
     variable core_counter : INTEGER := 0;
+    variable msg_counter : INTEGER := 0;
+    variable watchdog_counter : INTEGER := 0;
+    variable core_valid_out_counter : INTEGER := 0;
     begin
         if reset_n = '0' then
             state <= WAIT_FOR_NEW_INPUT;
@@ -405,35 +410,52 @@ begin
             when WAIT_FOR_NEW_INPUT =>
                 valid_out_reg <= '0';
 		    	ready_in_reg <= '1';
-                if valid_in_reg = '1' then
-                    core_message(core_counter) <= message;
-                    core_valid_in(core_counter) <= '1';
+                watchdog_counter := watchdog_counter + 1;
+                core_counter := 0;
+                if watchdog_counter = 20 then
+                    state <= WAIT_RESULTS;
+                    core_counter := 0;
+                elsif valid_in_reg = '1' and msg_counter < NUM_CORES and message /= (message'range => '0') then
+                    watchdog_counter := 0;
+                    core_message(msg_counter) <= message;
+                    core_valid_in(msg_counter) <= '1';
 		    		ready_in_reg <= '0';
 		    		state <= GIVE_CORE_INPUT;
 		    	end if;
 
             when GIVE_CORE_INPUT =>
-                if core_counter < NUM_CORES then
-                    core_counter := core_counter + 1;
+                watchdog_counter := 0;
+                if msg_counter < NUM_CORES and message /= (message'range => '0') then
                     state <= WAIT_FOR_NEW_INPUT;
+                    msg_counter := msg_counter + 1;
                 end if;
-                if core_counter >= NUM_CORES then
-                    core_counter := 0;
+                if msg_counter >= NUM_CORES then
                     state <= WAIT_RESULTS;
                 end if;
                     
 
             when WAIT_RESULTS =>
                 core_valid_in <= (others => '0');
-                if core_counter >= NUM_CORES then
+                if msg_counter = 0 then
                     state <= WAIT_FOR_NEW_INPUT;
                     core_counter := 0;
-                elsif core_valid_out = (core_valid_out'range => '1') then
+                else 
+                    for i in 0 to NUM_CORES-1 loop
+                        if core_valid_out(i) = '1' then
+                            core_valid_out_counter := core_valid_out_counter + 1;
+                        end if;
+                    end loop;
+                end if;
+                if core_valid_out_counter = msg_counter and msg_counter /= 0 then
                     state <= ALL_MSG_DONE;
                     result <= core_result(core_counter);
+                    core_valid_out_counter := 0;
+                else
+                    core_valid_out_counter := 0;
                 end if;
 
             when ALL_MSG_DONE =>
+                core_valid_out_counter := 0;
                 valid_out_reg <= '1';
                 core_ready_out(core_counter) <= '1';
                 if ready_out_reg = '1' then
@@ -442,12 +464,16 @@ begin
 
             when NEXT_MSG_OUT =>
                 valid_out_reg <= '0';
-                if core_counter >= NUM_CORES  then
+                if msg_counter = 0 then
                     core_counter := 0;
                     state <= WAIT_FOR_NEW_INPUT;
+                    msg_counter := 0;
                 else 
+                    core_ready_out(core_counter) <= '0';
                     core_counter := core_counter + 1;
+                    msg_counter := msg_counter - 1;
                     state <= WAIT_RESULTS;
+                    
                 end if;
                 
             end case;
