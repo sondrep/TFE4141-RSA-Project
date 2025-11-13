@@ -102,7 +102,7 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 
-entity exponentiation is
+entity rl_modexp is
     generic (
         C_block_size : integer := 256
     );
@@ -129,7 +129,7 @@ entity exponentiation is
     );
 end entity;
 
-architecture expBehave of exponentiation is
+architecture rl_binary of rl_modexp is
     type state_type is (START_PROCESSING, CHECK_EXP_BIT_MUL, SQUARE_MUL, WAIT_MUL_RB, WAIT_MUL_BB, MSG_DONE, REDUCE_BASE, WAIT_FOR_NEW_INPUT);
     signal state: state_type := WAIT_FOR_NEW_INPUT;
     signal bit_index: integer range 0 to C_block_size-1;
@@ -164,16 +164,16 @@ begin
         R_out => blakley_R_out
     );
 
-    process(ready_out, clk)
-    begin
-        if ready_out = '1' and state = MSG_DONE and valid_out_reg = '1' then
-            ready_out_reg <= '1';
-            valid_out <= '1';
-        else
-            valid_out <= '0';
-            ready_out_reg <= '0';
-        end if;
-    end process;
+    --process(ready_out, clk)
+    --begin
+    --    if ready_out = '1' and state = MSG_DONE and valid_out_reg = '1' then
+    --        ready_out_reg <= '1';
+    --        valid_out <= '1';
+    --    else
+    --        valid_out <= '0';
+    --        ready_out_reg <= '0';
+    --    end if;
+    --end process;
     
     process(clk, valid_in)
     begin
@@ -212,7 +212,7 @@ begin
                     end if;
             
             when START_PROCESSING =>
-                valid_out_reg <= '0';
+                valid_out <= '0';
                 if valid_in = '1' then
                     blakley_reset_n <= '1';
                     blakley_r_read_done <= '0';
@@ -286,8 +286,8 @@ begin
                 blakley_r_read_done <= '0';
                 blakley_reset_n <= '0';
                 result <= STD_LOGIC_VECTOR(temp_result);
-                valid_out_reg <= '1';
-                if ready_out_reg = '1' then
+                valid_out <= '1';
+                if ready_out = '1' then
                     state <= WAIT_FOR_NEW_INPUT;
                 end if;
                 
@@ -300,5 +300,158 @@ begin
 
         end case;
     end if;
+end process;
+end architecture;
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity exponentiation is
+    generic (
+        C_block_size : integer := 256;
+        NUM_CORES : integer := 2
+    );
+    port (
+        -- Utility
+        clk         : in  STD_LOGIC;
+        reset_n     : in  STD_LOGIC;
+
+        -- Input control
+        valid_in    : in  STD_LOGIC; -- This is our START signal pretty much 
+        ready_in    : out STD_LOGIC;    -- We signal that we are ready to recieve input
+
+        -- Output control
+        ready_out   : in STD_LOGIC;     -- outside says its ready to receive message (I think we can assume they have read the message here)
+        valid_out   : out STD_LOGIC;    -- output that signals we are DONE processing
+
+        -- Input data
+        message     : in  STD_LOGIC_VECTOR(C_block_size-1 downto 0);
+        key         : in  STD_LOGIC_VECTOR(C_block_size-1 downto 0);
+        modulus     : in  STD_LOGIC_VECTOR(C_block_size-1 downto 0);
+
+        -- Output data
+        result      : out STD_LOGIC_VECTOR(C_block_size-1 downto 0)
+    );
+end entity;
+
+architecture expBehave of exponentiation is
+    type state_type is (WAIT_FOR_NEW_INPUT, GIVE_CORE_INPUT, WAIT_RESULTS, ALL_MSG_DONE, NEXT_MSG_OUT);
+    signal state : state_type := WAIT_FOR_NEW_INPUT;
+    signal ready_out_reg : std_logic;
+    signal valid_out_reg : std_logic;
+	signal valid_in_reg : std_logic;
+	signal ready_in_reg : std_logic;
+    signal core_valid_in, core_ready_in, core_valid_out, core_ready_out : std_logic_vector(NUM_CORES-1 downto 0) := (others => '0');
+    type core_vec is array (0 to NUM_CORES-1) of std_logic_vector(C_block_size-1 downto 0);
+    signal core_message, core_result : core_vec;
+begin
+    gen_cores : for i in 0 to NUM_CORES-1 generate
+        core_i : entity work.rl_modexp
+        generic map (C_block_size => C_block_size)
+        port map (
+            clk       => clk,
+            reset_n   => reset_n,
+            valid_in  => core_valid_in(i),
+            ready_in  => core_ready_in(i),
+            ready_out => core_ready_out(i),
+            valid_out => core_valid_out(i),
+            message   => core_message(i),
+            key       => key,       -- same key for all
+            modulus   => modulus,   -- same modulus for all
+            result    => core_result(i)
+        );
+    end generate;
+
+    process(clk)
+    begin
+            if ready_out = '1' and state = ALL_MSG_DONE and valid_out_reg = '1' then
+                ready_out_reg <= '1';
+                valid_out <= '1';
+            else
+                valid_out <= '0';
+                ready_out_reg <= '0';
+            end if;
+    end process;
+    
+    process(clk, valid_in)
+    begin
+		if (valid_in = '1' and state = WAIT_FOR_NEW_INPUT and ready_in_reg = '1') then
+			valid_in_reg <= '1';
+			ready_in <= '0';
+		elsif state /= WAIT_FOR_NEW_INPUT then
+			ready_in <= '0';
+		else
+			valid_in_reg <= '0';
+			ready_in <= '1';
+		end if;
+        
+    end process;
+
+    process(clk)
+    variable core_counter : INTEGER := 0;
+    begin
+        if reset_n = '0' then
+            state <= WAIT_FOR_NEW_INPUT;
+            valid_out_reg <= '0';
+            ready_in_reg <= '1';
+            core_valid_in <= (others => '0');
+            core_ready_out <= (others => '0');
+            core_counter := 0;
+            result <= (others => '0');
+
+        elsif rising_edge(clk) then
+            case state is
+            when WAIT_FOR_NEW_INPUT =>
+                valid_out_reg <= '0';
+		    	ready_in_reg <= '1';
+                if valid_in_reg = '1' then
+                    core_message(core_counter) <= message;
+                    core_valid_in(core_counter) <= '1';
+		    		ready_in_reg <= '0';
+		    		state <= GIVE_CORE_INPUT;
+		    	end if;
+
+            when GIVE_CORE_INPUT =>
+                if core_counter < NUM_CORES then
+                    core_counter := core_counter + 1;
+                    state <= WAIT_FOR_NEW_INPUT;
+                end if;
+                if core_counter >= NUM_CORES then
+                    core_counter := 0;
+                    state <= WAIT_RESULTS;
+                end if;
+                    
+
+            when WAIT_RESULTS =>
+                core_valid_in <= (others => '0');
+                if core_counter >= NUM_CORES then
+                    state <= WAIT_FOR_NEW_INPUT;
+                    core_counter := 0;
+                elsif core_valid_out = (core_valid_out'range => '1') then
+                    state <= ALL_MSG_DONE;
+                    result <= core_result(core_counter);
+                end if;
+
+            when ALL_MSG_DONE =>
+                valid_out_reg <= '1';
+                core_ready_out(core_counter) <= '1';
+                if ready_out_reg = '1' then
+                    state <= NEXT_MSG_OUT;
+                end if;
+
+            when NEXT_MSG_OUT =>
+                valid_out_reg <= '0';
+                if core_counter >= NUM_CORES  then
+                    core_counter := 0;
+                    state <= WAIT_FOR_NEW_INPUT;
+                else 
+                    core_counter := core_counter + 1;
+                    state <= WAIT_RESULTS;
+                end if;
+                
+            end case;
+        end if;
+
 end process;
 end architecture;
