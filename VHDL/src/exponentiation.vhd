@@ -331,6 +331,9 @@ entity exponentiation is
         key         : in  STD_LOGIC_VECTOR(C_block_size-1 downto 0);
         modulus     : in  STD_LOGIC_VECTOR(C_block_size-1 downto 0);
 
+        msgin_last : in STD_LOGIC;
+        msgout_last : out STD_LOGIC;
+
         -- Output data
         result      : out STD_LOGIC_VECTOR(C_block_size-1 downto 0)
     );
@@ -346,6 +349,8 @@ architecture expBehave of exponentiation is
     signal core_valid_in, core_ready_in, core_valid_out, core_ready_out : std_logic_vector(NUM_CORES-1 downto 0) := (others => '0');
     type core_vec is array (0 to NUM_CORES-1) of std_logic_vector(C_block_size-1 downto 0);
     signal core_message, core_result : core_vec;
+
+    signal core_msg_last : std_logic_vector(NUM_CORES-1 downto 0) := (others => '0');
 
 begin
     gen_cores : for i in 0 to NUM_CORES-1 generate
@@ -420,6 +425,7 @@ begin
                     core_message(msg_counter) <= message;
                     core_valid_in(msg_counter) <= '1';
 		    		ready_in_reg <= '0';
+                    core_msg_last(msg_counter) <= msgin_last;
 		    		state <= GIVE_CORE_INPUT;
 		    	end if;
 
@@ -449,6 +455,7 @@ begin
                 if core_valid_out_counter = msg_counter and msg_counter /= 0 then
                     state <= ALL_MSG_DONE;
                     result <= core_result(core_counter);
+                    msgout_last <= core_msg_last(core_counter);
                     core_valid_out_counter := 0;
                 else
                     core_valid_out_counter := 0;
@@ -473,7 +480,7 @@ begin
                     core_counter := core_counter + 1;
                     msg_counter := msg_counter - 1;
                     state <= WAIT_RESULTS;
-                    
+                    msgout_last  <= '0';
                 end if;
                 
             end case;
